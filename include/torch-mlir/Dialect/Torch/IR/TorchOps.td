@@ -1673,4 +1673,35 @@ def Torch_QuantizedDecomposedDequantizePerChannelOp : Torch_Op<
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Custom ops.
+//===----------------------------------------------------------------------===//
+
+def Torch_QuadAddOp : Torch_Op<"quad_add", [
+    AllowsTypeRefinement,
+    HasValueSemantics,
+    ReadOnly
+  ]> {
+  let summary = "Computes a*b + (a*a + b) element-wise";
+  let description = [{
+    Custom op computing a fused quadratic-style expression element-wise:
+
+    ```
+    result = a * b + (a * a + b)
+    ```
+
+    `a` and `b` must be tensors. This op is never lowered directly -- it is
+    always rewritten by `DecomposeComplexOps` into `aten.mul.Tensor` and
+    `aten.add.Tensor` before reaching any backend.
+  }];
+  let arguments = (ins
+    AnyTorchTensorType:$a,
+    AnyTorchTensorType:$b
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let assemblyFormat = "$a `,` $b attr-dict `:` type($a) `,` type($b) `->` type($result)";
+}
+
 #endif // TORCH_OPS
