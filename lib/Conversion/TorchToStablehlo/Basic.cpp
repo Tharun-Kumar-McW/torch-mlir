@@ -499,6 +499,45 @@ public:
 };
 } // namespace
 
+// Quad_add op lowering
+namespace {
+class ConvertQuadAddOp : public OpConversionPattern<QuadAddOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  using OpAdaptor = QuadAddOp::Adaptor;
+  LogicalResult
+  matchAndRewrite(QuadAddOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const override {
+    Value a = adaptor.getA();
+    Value b = adaptor.getB();
+
+    auto outType = cast<TensorType>(getTypeConverter()->convertType(op.getType()));
+    Type outElemTy = outType.getElementType();
+    if (!outElemTy.isIntOrFloat()) {
+      return op.emitError(
+          "only floating-point or integer datatype legalization supported");
+    }
+
+    Location loc = op.getLoc();
+    a = hlo::promoteType(rewriter, loc, a, outElemTy);
+    b = hlo::promoteType(rewriter, loc, b, outElemTy);
+
+    DenseI64ArrayAttr bcastDimensions;
+    // a * a
+    Value aSquared = chlo::BroadcastMulOp::create(rewriter, loc, outType, a, a,
+                                                   bcastDimensions);
+    // (a * a) + b
+    Value aSquaredPlusB = chlo::BroadcastAddOp::create(rewriter, loc, outType, aSquared, b, bcastDimensions);
+    // a * b
+    Value ab = chlo::BroadcastMulOp::create(rewriter, loc, outType, a, b, bcastDimensions);
+    // a*b + ((a*a) + b)
+    Value result = chlo::BroadcastAddOp::create(rewriter, loc, outType, ab, aSquaredPlusB, bcastDimensions);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+} // namespace
+
 // Binary op legalizations for comparator ops.
 namespace {
 template <typename AtenOpT>
@@ -2333,6 +2372,8 @@ void mlir::torch::torch_to_stablehlo::populateBasicOpPatternsAndLegality(
   patterns.add<ConvertAtenTransposeIntOp>(typeConverter, context);
   target.addIllegalOp<RuntimeAssertOp>();
   patterns.add<ConvertRuntimeAssertOp>(typeConverter, context);
+  target.addIllegalOp<QuadAddOp>();
+  patterns.add<ConvertQuadAddOp>(typeConverter, context);
 
 #define INSERT_UNARY_PATTERN(AtenOp, StablehloOp)                              \
   target.addIllegalOp<AtenOp>();                                               \

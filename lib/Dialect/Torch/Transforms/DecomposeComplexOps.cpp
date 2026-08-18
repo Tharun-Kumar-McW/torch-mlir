@@ -7927,6 +7927,34 @@ class DecomposeAtenAddCLikeOp : public OpRewritePattern<OpTy> {
   }
 };
 
+// Decompose `torch.quad_add(a, b)` into `a*b + (a*a + b)`, using only
+// `aten.mul.Tensor` and `aten.add.Tensor`, both of which already have
+// Linalg/TOSA/StableHLO lowerings.
+class DecomposeQuadAddOp : public OpRewritePattern<QuadAddOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(QuadAddOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value a = op.getA();
+    Value b = op.getB();
+    Value one =
+        ConstantIntOp::create(rewriter, loc, rewriter.getI64IntegerAttr(1));
+
+    // a * a
+    Value aSquared = AtenMulTensorOp::create(rewriter, loc, op.getType(), a, a);
+    // (a * a) + b
+    Value aSquaredPlusB =
+        AtenAddTensorOp::create(rewriter, loc, op.getType(), aSquared, b, one);
+    // a * b
+    Value ab = AtenMulTensorOp::create(rewriter, loc, op.getType(), a, b);
+    // a*b + ((a*a) + b)
+    rewriter.replaceOpWithNewOp<AtenAddTensorOp>(op, op.getType(), ab,
+                                                  aSquaredPlusB, one);
+    return success();
+  }
+};
+
 class DecomposeAtenLayerNormOp : public OpRewritePattern<AtenLayerNormOp> {
   using OpRewritePattern<AtenLayerNormOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(AtenLayerNormOp op,
@@ -13597,6 +13625,7 @@ public:
         DecomposeAtenAddCLikeOp<AtenAddcmulOp, AtenMulTensorOp>>(patterns);
     addPatternIfTargetOpIsIllegal<
         DecomposeAtenAddCLikeOp<AtenAddcdivOp, AtenDivTensorOp>>(patterns);
+    addPatternIfTargetOpIsIllegal<DecomposeQuadAddOp>(patterns);
     addPatternIfTargetOpIsIllegal<DecomposeAtenInstanceNormOp>(patterns);
     addPatternIfTargetOpIsIllegal<DecomposeAtenLayerNormOp>(patterns);
     addPatternIfTargetOpIsIllegal<DecomposeAtenNativeLayerNormOp>(patterns);

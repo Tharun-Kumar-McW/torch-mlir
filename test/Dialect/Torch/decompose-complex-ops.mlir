@@ -1475,3 +1475,18 @@ func.func @mixed_int_and_bool(%input: !torch.vtensor<[5,5],f32>,
       -> !torch.vtensor<[5,5],f32>
   return %result : !torch.vtensor<[5,5],f32>
 }
+
+// -----
+
+// CHECK-LABEL:   func.func @torch.quad_add$decompose(
+// CHECK-SAME:        %[[A:.*]]: !torch.vtensor<[?],f32>, %[[B:.*]]: !torch.vtensor<[?],f32>) -> !torch.vtensor<[?],f32> {
+// CHECK:           %[[ONE:.*]] = torch.constant.int 1
+// CHECK:           %[[AA:.*]] = torch.aten.mul.Tensor %[[A]], %[[A]] : !torch.vtensor<[?],f32>, !torch.vtensor<[?],f32> -> !torch.vtensor<[?],f32>
+// CHECK:           %[[AAB:.*]] = torch.aten.add.Tensor %[[AA]], %[[B]], %[[ONE]] : !torch.vtensor<[?],f32>, !torch.vtensor<[?],f32>, !torch.int -> !torch.vtensor<[?],f32>
+// CHECK:           %[[AB:.*]] = torch.aten.mul.Tensor %[[A]], %[[B]] : !torch.vtensor<[?],f32>, !torch.vtensor<[?],f32> -> !torch.vtensor<[?],f32>
+// CHECK:           %[[RESULT:.*]] = torch.aten.add.Tensor %[[AB]], %[[AAB]], %[[ONE]] : !torch.vtensor<[?],f32>, !torch.vtensor<[?],f32>, !torch.int -> !torch.vtensor<[?],f32>
+// CHECK:           return %[[RESULT]] : !torch.vtensor<[?],f32>
+func.func @torch.quad_add$decompose(%a: !torch.vtensor<[?],f32>, %b: !torch.vtensor<[?],f32>) -> !torch.vtensor<[?],f32> {
+  %0 = torch.quad_add %a, %b : !torch.vtensor<[?],f32>, !torch.vtensor<[?],f32> -> !torch.vtensor<[?],f32>
+  return %0 : !torch.vtensor<[?],f32>
+}
